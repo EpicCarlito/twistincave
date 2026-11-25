@@ -40,6 +40,9 @@ async def main():
 
     font = pygame.font.Font(None, 26)
 
+    startTime = pygame.time.get_ticks()
+    elapsedTime = 0.0
+
     class SpriteSheet:
         def __init__(self, image_path):
             self.sheet = pygame.image.load(
@@ -215,7 +218,7 @@ async def main():
     goal = random.choice([(0, COLS - 1), (ROWS - 1, 0), (ROWS - 1, COLS - 1)])
 
     horizontal, vertical, adjustableTiles = generatePuzzle()
-    
+
     originalHorizontal = [row.copy() for row in horizontal]
     originalVertical = [row.copy() for row in vertical]
     originalAdjustableTiles = adjustableTiles.copy()
@@ -373,7 +376,7 @@ async def main():
         # Draw goal
         if tuple(goal) in visibleCells:
             gx, gy = goal[1], goal[0]
-            
+
             image = assets.get_image(96, 0, CELL_SIZE - 2, CELL_SIZE - 2)
 
             screen.blit(
@@ -384,11 +387,39 @@ async def main():
                 ),
             )
 
+        if isCompleted:
+            endGameText = font.render("You Escaped!", True, WHITE)
+            timeText = font.render(
+                f"Time Elapsed: {elapsedTime:.2f}s", True, WHITE
+            )
+
+            screen.blit(
+                endGameText,
+                endGameText.get_rect(
+                    center=(
+                        screen.get_width() // 2,
+                        screen.get_height() // 2 - 20,
+                    )
+                ),
+            )
+            screen.blit(
+                timeText,
+                timeText.get_rect(
+                    center=(
+                        screen.get_width() // 2,
+                        screen.get_height() // 2 + 25,
+                    )
+                ),
+            )
+
         # Draw player
         player.draw()
 
-        restartText = font.render("Press R to restart", True, WHITE)
+        restartText = font.render("Press R to return to the start", True, WHITE)
         screen.blit(restartText, (10, 10))
+
+        moveText = font.render("WASD / Arrow Keys to Move", True, WHITE)
+        screen.blit(moveText, (10, 30))
 
         pygame.display.flip()
 
@@ -409,6 +440,8 @@ async def main():
     updateFog()
 
     while running:
+        draw()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -422,6 +455,7 @@ async def main():
 
                     player.reset()
                     isCompleted = False
+                    startTime = pygame.time.get_ticks()
 
                     updateFog()
 
@@ -431,7 +465,9 @@ async def main():
                     move(dr, dc)
 
                     if player.row == goal[0] and player.col == goal[1]:
-                        isCompleted = True
+                        if not isCompleted:
+                            isCompleted = True
+                            elapsedTime = (pygame.time.get_ticks() - startTime) / 1000.0
 
             # Rotation
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -450,7 +486,8 @@ async def main():
                     ):
 
                         rotate_cell(row, col)
-        draw()
         clock.tick(60)
         await asyncio.sleep(0)
+
+
 asyncio.run(main())
