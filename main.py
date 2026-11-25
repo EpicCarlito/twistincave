@@ -1,290 +1,272 @@
+import os
+
 import pygame
 import random
-import sys
-
-pygame.init()
-
-ROWS = 14
-COLS = 14
-CELL_SIZE = 42
-
-WIDTH = COLS * CELL_SIZE
-HEIGHT = ROWS * CELL_SIZE
-
-SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Twisting Caves")
-# to james looking over this, i made this hella bare bones im sorry
-
-# color stuff
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-GRAY = (235, 235, 235)
-
-CLOCK = pygame.time.Clock()
-
-horizontal = []
-vertical = []
+import asyncio
 
 
-def generate():
+async def main():
+    pygame.init()
 
-    global horizontal, vertical
+    ROWS = 12
+    COLS = 12
+    CELL_SIZE = 32
+    PADDING = 64
 
-    horizontal = [
-        [True for _ in range(COLS)]
-        for _ in range(ROWS + 1)
-    ] 
+    WIDTH = COLS * CELL_SIZE + (2 * PADDING)
+    HEIGHT = ROWS * CELL_SIZE + (2 * PADDING)
 
-    vertical = [
-        [True for _ in range(COLS + 1)]
-        for _ in range(ROWS)
-    ]
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Twisting Caves")
 
-    visited = set()
-    stack = [(0, 0)]
+    # Color
+    WHITE = (255, 255, 255)
+    BLACK = (0, 0, 0)
+    GRAY = (235, 235, 235)
 
-    visited.add((0, 0))
+    clock = pygame.time.Clock()
 
-    while stack:
+    DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+    animationCooldown = 100
 
-        r, c = stack[-1]
+    horizontal = []
+    vertical = []
 
-        neighbors = [
-            (r - 1, c, "top"),
-            (r + 1, c, "bottom"),
-            (r, c - 1, "left"),
-            (r, c + 1, "right")
-        ]
+    font = pygame.font.Font(None, 26)
 
-        random.shuffle(neighbors)
+    class SpriteSheet:
+        def __init__(self, image_path):
+            self.sheet = pygame.image.load(
+                os.path.join(DIRECTORY, image_path)
+            ).convert_alpha()
 
-        found = False
+        def get_image(self, x, y, width, height):
+            image = pygame.Surface((width, height), pygame.SRCALPHA)
+            image.blit(self.sheet, (0, 0), (x, y, width, height))
 
-        for nr, nc, direction in neighbors:
+            return image
 
-            if not (0 <= nr < ROWS and 0 <= nc < COLS):
-                continue
+    class Player:
+        def __init__(self, row, col):
+            self.row = row
+            self.col = col
+            self.sheet = SpriteSheet("assets/player.png")
+            self.image = self.sheet.get_image(0, 0, CELL_SIZE, CELL_SIZE)
 
-            if (nr, nc) in visited:
-                continue
+        def update(self, nr, nc):
+            self.row = nr
+            self.col = nc
 
-            if direction == "top":
-                horizontal[r][c] = False
+        def draw(self):
+            screen.blit(
+                self.image,
+                (
+                    PADDING + self.col * CELL_SIZE,
+                    PADDING + self.row * CELL_SIZE,
+                ),
+            )
 
-            elif direction == "bottom":
-                horizontal[r + 1][c] = False
+    def generateMaze():
+        horizontal = [[True for _ in range(COLS)] for _ in range(ROWS + 1)]
+        vertical = [[True for _ in range(COLS + 1)] for _ in range(ROWS)]
 
-            elif direction == "left":
-                vertical[r][c] = False
+        visited = set()  # No repeating!
+        stack = [(0, 0)]
 
-            elif direction == "right":
-                vertical[r][c + 1] = False
+        visited.add((0, 0))
 
-            visited.add((nr, nc))
-            stack.append((nr, nc))
+        while stack:
+            row, col = stack[-1]
 
-            found = True
-            break
+            neighbors = [
+                (row - 1, col, "top"),
+                (row + 1, col, "bottom"),
+                (row, col - 1, "left"),
+                (row, col + 1, "right"),
+            ]
 
-        if not found:
-            stack.pop()
+            random.shuffle(neighbors)
 
+            found = False
 
-def rotate_cell(r, c): # everything here rotates clockwise
-    top = horizontal[r][c]
-    right = vertical[r][c + 1]
-    bottom = horizontal[r + 1][c]
-    left = vertical[r][c]
+            for nr, nc, direction in neighbors:
+                if not (0 <= nr < ROWS and 0 <= nc < COLS):
+                    continue
 
-    horizontal[r][c] = left
-    vertical[r][c + 1] = top
-    horizontal[r + 1][c] = right
-    vertical[r][c] = bottom
+                if (nr, nc) in visited:
+                    continue
 
+                if direction == "top":
+                    horizontal[row][col] = False
 
-# movement
+                elif direction == "bottom":
+                    horizontal[row + 1][col] = False
 
-player = [0, 0]
-goal = [ROWS - 1, COLS - 1]
+                elif direction == "left":
+                    vertical[row][col] = False
 
-# referral for later
-DIRECTIONS = {
-    pygame.K_UP: (-1, 0, "top"),
-    pygame.K_DOWN: (1, 0, "bottom"),
-    pygame.K_LEFT: (0, -1, "left"),
-    pygame.K_RIGHT: (0, 1, "right"),
+                elif direction == "right":
+                    vertical[row][col + 1] = False
 
-    pygame.K_w: (-1, 0, "top"),
-    pygame.K_s: (1, 0, "bottom"),
-    pygame.K_a: (0, -1, "left"),
-    pygame.K_d: (0, 1, "right")
-}
+                visited.add((nr, nc))
+                stack.append((nr, nc))
 
+                found = True
+                break
 
-def can_move(r, c, direction):
+            if not found:
+                stack.pop()
 
-    if direction == "top":
-        return not horizontal[r][c]
+        return horizontal, vertical
 
-    if direction == "bottom":
-        return not horizontal[r + 1][c]
+    def rotate_cell(row, col):  # everything here rotates clockwise
+        top = horizontal[row][col]
+        right = vertical[row][col + 1]
+        bottom = horizontal[row + 1][col]
+        left = vertical[row][col]
 
-    if direction == "left":
-        return not vertical[r][c]
+        horizontal[row][col] = left
+        vertical[row][col + 1] = top
+        horizontal[row + 1][col] = right
+        vertical[row][col] = bottom
 
-    if direction == "right":
-        return not vertical[r][c + 1]
+    player = Player(0, 0)
+    goal = [ROWS - 1, COLS - 1]
 
-    return False
+    # movement dictionary
+    DIRECTIONS = {
+        pygame.K_UP: (-1, 0, "top"),
+        pygame.K_DOWN: (1, 0, "bottom"),
+        pygame.K_LEFT: (0, -1, "left"),
+        pygame.K_RIGHT: (0, 1, "right"),
+        pygame.K_w: (-1, 0, "top"),
+        pygame.K_s: (1, 0, "bottom"),
+        pygame.K_a: (0, -1, "left"),
+        pygame.K_d: (0, 1, "right"),
+    }
 
+    def can_move(row, col, direction):
+        if direction == "top":
+            return not horizontal[row][col]
 
-def move(dr, dc, direction):
+        if direction == "bottom":
+            return not horizontal[row + 1][col]
 
-    r, c = player
+        if direction == "left":
+            return not vertical[row][col]
 
-    nr = r + dr
-    nc = c + dc
+        if direction == "right":
+            return not vertical[row][col + 1]
 
-    # this check bound (so it dont go ya yeet)
-    if not (0 <= nr < ROWS and 0 <= nc < COLS):
-        return
+        return False
 
-    # sharing wall stuff
-    if not can_move(r, c, direction):
-        return
+    def move(dr, dc, direction):
+        row = player.row
+        col = player.col
 
-    player[0] = nr
-    player[1] = nc
+        nr = row + dr
+        nc = col + dc
 
+        if not (0 <= nr < ROWS and 0 <= nc < COLS):
+            return
 
-def draw():
+        if not can_move(row, col, direction):
+            return
 
-    SCREEN.fill(WHITE)
+        player.update(nr, nc)
 
-    mouse_x, mouse_y = pygame.mouse.get_pos()
+    def draw():
+        screen.fill(WHITE)
 
-    hover_c = mouse_x // CELL_SIZE
-    hover_r = mouse_y // CELL_SIZE
+        mouseX, mouseY = pygame.mouse.get_pos()
+        hoveredColumn = (mouseX - PADDING) // CELL_SIZE
+        hoveredRow = (mouseY - PADDING) // CELL_SIZE
 
-    # Hover > draw a grey outline
-    if 0 <= hover_r < ROWS and 0 <= hover_c < COLS:
+        # Hover > Draw a grey outline
+        if 0 <= hoveredRow < ROWS and 0 <= hoveredColumn < COLS:
+            rect = pygame.Rect(
+                PADDING + hoveredColumn * CELL_SIZE,
+                PADDING + hoveredRow * CELL_SIZE,
+                CELL_SIZE,
+                CELL_SIZE,
+            )
 
-        rect = pygame.Rect(
-            hover_c * CELL_SIZE,
-            hover_r * CELL_SIZE,
-            CELL_SIZE,
-            CELL_SIZE
+            pygame.draw.rect(screen, GRAY, rect, 3)
+
+        # Draw horizontal walls
+        for r in range(ROWS + 1):
+            for c in range(COLS):
+                if horizontal[r][c]:
+                    x1 = PADDING + c * CELL_SIZE
+                    y = PADDING + r * CELL_SIZE
+                    x2 = PADDING + (c + 1) * CELL_SIZE
+
+                    pygame.draw.line(screen, BLACK, (x1, y), (x2, y), 2)
+
+        # Draw vertical walls
+        for r in range(ROWS):
+            for c in range(COLS + 1):
+                if vertical[r][c]:
+                    x = PADDING + c * CELL_SIZE
+                    y1 = PADDING + r * CELL_SIZE
+                    y2 = PADDING + (r + 1) * CELL_SIZE
+
+                    pygame.draw.line(screen, BLACK, (x, y1), (x, y2), 2)
+
+        # Draw goal
+        gx, gy = goal[1], goal[0]
+        goalRect = pygame.Rect(
+            PADDING + gx * CELL_SIZE + 13,
+            PADDING + gy * CELL_SIZE + 13,
+            CELL_SIZE - 26,
+            CELL_SIZE - 26,
         )
+        pygame.draw.rect(screen, BLACK, goalRect, 2)
 
-        pygame.draw.rect(SCREEN, GRAY, rect, 3)
+        # Draw player
+        player.draw()
 
-    # Draw horizontal walls
-    for r in range(ROWS + 1):
+        restartText = font.render("Press R to restart", True, BLACK)
+        screen.blit(restartText, (10, 10))
 
-        for c in range(COLS):
+        pygame.display.flip()
 
-            if horizontal[r][c]:
+    # Inital Maze Generation
+    horizontal, vertical = generateMaze()
 
-                x1 = c * CELL_SIZE
-                y = r * CELL_SIZE
-                x2 = (c + 1) * CELL_SIZE
+    running = True
+    isCompleted = False
 
-                pygame.draw.line(
-                    SCREEN, BLACK,
-                    (x1, y), (x2, y), 2
-                )
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
 
-    # Draw vertical walls
-    for r in range(ROWS):
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:
+                    horizontal, vertical = generateMaze()
+                    player.update(0, 0)
+                    isCompleted = False
 
-        for c in range(COLS + 1):
+                elif event.key in DIRECTIONS and not isCompleted:
+                    dr, dc, direction = DIRECTIONS[event.key]
+                    move(dr, dc, direction)
 
-            if vertical[r][c]:
+                    if player.row == goal[0] and player.col == goal[1]:
+                        isCompleted = True
 
-                x = c * CELL_SIZE
-                y1 = r * CELL_SIZE
-                y2 = (r + 1) * CELL_SIZE
+            # Rotation
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1 and not isCompleted:
+                    mouseX, mouseY = pygame.mouse.get_pos()
 
-                pygame.draw.line(
-                    SCREEN, BLACK,
-                    (x, y1), (x, y2), 2
-                )
+                    col = (mouseX - PADDING) // CELL_SIZE
+                    row = (mouseY - PADDING) // CELL_SIZE
 
-    # Draw goal
-    gx, gy = goal[1], goal[0]
+                    if 0 <= row < ROWS and 0 <= col < COLS:
+                        rotate_cell(row, col)
+        draw()
+        clock.tick(60)
 
-    goal_rect = pygame.Rect(
-        gx * CELL_SIZE + 13,
-        gy * CELL_SIZE + 13,
-        CELL_SIZE - 26,
-        CELL_SIZE - 26
-    )
 
-    pygame.draw.rect(SCREEN, BLACK, goal_rect, 2)
-
-    # Draw player
-    px, py = player[1], player[0]
-
-    pygame.draw.circle(
-        SCREEN,
-        BLACK,
-        (
-            px * CELL_SIZE + CELL_SIZE // 2,
-            py * CELL_SIZE + CELL_SIZE // 2
-        ),
-        9
-    )
-
-    pygame.display.flip()
-
-# main game loop
-generate()
-
-running = True
-won = False
-
-while running:
-
-    CLOCK.tick(60)
-
-    for event in pygame.event.get():
-
-        if event.type == pygame.QUIT:
-            running = False
-
-        if event.type == pygame.KEYDOWN:
-
-            if event.key == pygame.K_r:
-                generate()
-                player = [0, 0]
-                won = False
-
-            elif event.key in DIRECTIONS and not won:
-
-                dr, dc, direction = DIRECTIONS[event.key]
-
-                move(dr, dc, direction)
-
-                if player == goal:
-                    won = True
-
-        # rotation
-        if event.type == pygame.MOUSEBUTTONDOWN:
-
-            if event.button == 1 and not won:
-
-                mx, my = pygame.mouse.get_pos()
-
-                c = mx // CELL_SIZE
-                r = my // CELL_SIZE
-
-                if 0 <= r < ROWS and 0 <= c < COLS:
-                    rotate_cell(r, c)
-
-    draw()
-
-    if won:
-        pygame.display.set_caption("nice!")
-
-pygame.quit()
-sys.exit()
+asyncio.run(main())
