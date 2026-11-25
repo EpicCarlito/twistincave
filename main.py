@@ -377,7 +377,7 @@ async def main():
         if tuple(goal) in visibleCells:
             gx, gy = goal[1], goal[0]
 
-            image = assets.get_image(96, 0, CELL_SIZE - 2, CELL_SIZE - 2)
+            image = assets.get_image(32, 32, CELL_SIZE - 2, CELL_SIZE - 2)
 
             screen.blit(
                 image,
