@@ -452,6 +452,5 @@ async def main():
                         rotate_cell(row, col)
         draw()
         clock.tick(60)
-
-
+        await asyncio.sleep(0)
 asyncio.run(main())
